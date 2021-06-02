@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@fluidframework/aqueduct": "^0.40.0-25719",
+    "@fluidframework/ordered-collection": "^0.40.0-25719",
     "@fluid-experimental/tinylicious-client": "^0.40.0-25719",
     "@fluid-experimental/fluid-static": "^0.40.0-25719",
     "@fluidframework/map": "^0.40.0-25719",

@@ -1,19 +1,35 @@
-import TinyliciousClient, { TinyliciousConnectionConfig } from "@fluid-experimental/tinylicious-client";
-import { ContainerSchema } from "@fluid-experimental/fluid-static";
+//import TinyliciousClient, { TinyliciousConnectionConfig } from "@fluid-experimental/tinylicious-client";
+import { RouterliciousDocumentServiceFactory } from "@fluidframework/routerlicious-driver";
+import { getContainer as getFluidContainer } from "@fluid-experimental/get-container";
+import { HotfixedInsecureTinyliciousUrlResolver as InsecureTinyliciousUrlResolver} from "./hotfixed_InsecureTinyliciousUrlResolver";
+import { InsecureTinyliciousTokenProvider } from "@fluidframework/tinylicious-driver";
+import { IRuntimeFactory } from "@fluidframework/container-definitions";
+
+
 
 export enum BackendType {
     TINYLICIOUS,
     ROUTERLICIOUS,
     FRS
 }
-export async function getContainer(documentId: string, containerSchema: ContainerSchema, newContainer: boolean, backend: BackendType) {
+export async function getContainer(documentId: string, containerRuntimeFactory: IRuntimeFactory, newContainer: boolean, backend: BackendType) {
     switch (backend) {
         case BackendType.TINYLICIOUS:
-            const config: TinyliciousConnectionConfig = { port: 7070 };
-            TinyliciousClient.init(config);
-            if (newContainer)
-                await TinyliciousClient.createContainer({ id: documentId }, containerSchema);
-            return TinyliciousClient.getContainer({ id: documentId }, containerSchema);
+            const tokenProvider = new InsecureTinyliciousTokenProvider();
+            const documentServiceFactory = new RouterliciousDocumentServiceFactory(tokenProvider);
+
+            // the hotfixed version allows passing in an endpoint
+            const urlResolver = new InsecureTinyliciousUrlResolver(7070, "http://127.0.0.1");
+            const containerService = {
+                documentServiceFactory,
+                urlResolver,
+            };
+            return getFluidContainer(
+                containerService,
+                documentId,
+                containerRuntimeFactory,
+                newContainer,
+            );
         default:
             throw Error("Backend not yet supported")
     }

@@ -1,27 +1,70 @@
 
 import express from 'express';
 import http from 'http';
-import { FluidContainer } from "@fluid-experimental/fluid-static";
+
+import { getDefaultObjectFromContainer } from "@fluidframework/aqueduct";
+import { LoggingError } from "@fluidframework/telemetry-utils";
 
 import { BackendType, getContainer } from './fluid/init';
-import { SharedMap } from "@fluidframework/map";
+
+import {CommandQueue} from "./fluid/dataObject"
+import { CommandQueueContainerRuntimeFactory} from "./fluid/containerCode";
+import { ContainerSchema } from "@fluid-experimental/fluid-static";
+import { Container } from "@fluidframework/container-loader";
 
 const app = express();
 const server = http.createServer(app);
 
 interface IActiveDocument {
-    container: FluidContainer
+    container: Container
+    queue: CommandQueue
 }
 const activeDocuments = new Map<string, IActiveDocument>();
 
-const schema = {
+const schema: ContainerSchema = {
     name: 'demo-container',
-    initialObjects: { myMap: SharedMap }
+    initialObjects: {}
 };
 
+async function try_get_container(documentId: string){
+    const doc = activeDocuments.get(documentId);
+    if(doc) return doc
+    try {
+        const container = await getContainer(documentId, CommandQueueContainerRuntimeFactory, false, BackendType.TINYLICIOUS);
+        const queue = await getDefaultObjectFromContainer<CommandQueue>(container);
+        activeDocuments.set(documentId, { container,queue });
+        return { container,queue };
+    } catch (error) {
+        return undefined;
+    }
+    
+       
+}
 
 app.get('/list', (req, res) => {
     res.send(JSON.stringify(Array.from(activeDocuments.keys())));
+});
+app.get('/show/:documentId',async (req, res) => {
+    const { documentId } = req.params;
+    const doc = (await try_get_container(documentId))!;
+    const queue = await getDefaultObjectFromContainer<CommandQueue>(doc.container)
+    
+    const result = queue.list();
+
+    res.send(JSON.stringify(result));
+    
+});
+
+app.get('/add/:documentId',async (req, res) => {
+    const { documentId } = req.params;
+    const doc = (await try_get_container(documentId))!;
+    const queue = doc.queue;
+    const val = Math.floor(Math.random() * 100)
+    queue.add(val);
+
+
+    res.send(JSON.stringify({message: `Addded value ${val} added to queue`}));
+    
 });
 
 app.get('/create/:documentId', async (req, res) => {
@@ -34,20 +77,17 @@ app.get('/create/:documentId', async (req, res) => {
             throw Error("could not create document");
         }
 
-        const [container, contianerService] = await getContainer(documentId, schema, true, BackendType.TINYLICIOUS);
-        activeDocuments.set(documentId, { container });
+        const container = await getContainer(documentId, CommandQueueContainerRuntimeFactory, true, BackendType.TINYLICIOUS);
+        const queue = await getDefaultObjectFromContainer<CommandQueue>(container);
+
+        activeDocuments.set(documentId, { container,queue });
         res.send(JSON.stringify({ "message": "container created", documentId }));
 
     } catch (error) {
-        res.send((error as Error).message);
+        const e = error as LoggingError;       
+
+        res.send(`${e.name}: ${e.message}, ${JSON.stringify(e.getTelemetryProperties())}`);
     }
-});
-
-// TODO: add view to a document to inspect it from a web client
-
-app.get('/init/:documentId', (req, res) => {
-    // TODO
-    res.send('<h1>Hello world</h1>');
 });
 
 server.listen(3000, () => {
