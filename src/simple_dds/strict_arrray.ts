@@ -1,6 +1,6 @@
 
 import { SharedObject, ValueType } from "@fluidframework/shared-object-base";
-import { ISharedStrictArrayEvents, ISharedStrictArray } from "./interfaces";
+import { ISharedStrictArrayEvents, ISharedStrictArray, SharedStrictArrayEventType } from "./interfaces";
 import {
     IChannelAttributes,
     IFluidDataStoreRuntime,
@@ -32,7 +32,7 @@ interface IAppendOperation {
     type: "append";
 
     // The actual value
-    value: any;
+    values: any[];
 
     id: string
 
@@ -41,16 +41,14 @@ interface IAppendOperation {
 }
 const snapshotFileName = "shared_strict_array";
 
-type PendingResolve = (value: IAppendOperation | undefined) => void;
-
 export class SharedStrictArray<T extends Serializable = any> extends SharedObject<ISharedStrictArrayEvents<T>>
     implements ISharedStrictArray<T> {
 
 
 
     public static getFactory(): IChannelFactory {
-		return new StrictArrayFactory();
-	}
+        return new StrictArrayFactory();
+    }
     /**
      * The data array held by this dds.
      */
@@ -98,7 +96,7 @@ export class SharedStrictArray<T extends Serializable = any> extends SharedObjec
         // throw new Error("Method not implemented.");
     }
     protected processCore(message: ISequencedDocumentMessage, local: boolean, localOpMetadata: unknown) {
-        if (message.type === MessageType.Operation && message.sequenceNumber>this.lastSeenSequenceNumber) {
+        if (message.type === MessageType.Operation && message.sequenceNumber > this.lastSeenSequenceNumber) {
             const op = message.contents as IAppendOperation;
 
             // apply operation only if it references the correct previous operation
@@ -111,31 +109,24 @@ export class SharedStrictArray<T extends Serializable = any> extends SharedObjec
                     default:
                         throw new Error("Unknown operation");
                 }
-                if(this.activePush){
+                if (this.activePush) {
                     if (this.activePush.id === op.id) {
                         this.activePush.resolve();
-                        this.activePush = undefined;
                     } else {
                         this.activePush.reject(new Error("Not at head"));
-                        this.activePush = undefined;
                     }
+                    this.activePush = undefined;
                 }
-                
-            } 
+
+            }
             // update the last sequence number we have seen after processing
             this.lastSeenSequenceNumber = message.sequenceNumber;
         }
-        // if (local) {
-        //     // Resolve the pending promise for this operation now that we have received an ack for it.
-        //     const resolve = localOpMetadata as PendingResolve;
-        //     const op = message.contents as IAppendOperation;
-        //     resolve(op);
-        // }
-
     }
 
     protected appendCore(op: IAppendOperation) {
-        this.data?.push(op.value);
+        this.data.push(...op.values);
+        this.emit(SharedStrictArrayEventType.Added, op.values);
     }
     protected onDisconnect() {
         console.log(`SharedStrictArray ${this.id} is now disconnected`);
@@ -151,28 +142,22 @@ export class SharedStrictArray<T extends Serializable = any> extends SharedObjec
         if (!this.isAttached()) {
             throw new Error("Not attached.");
         }
-
-        //wait until we know the server has accepted the message
-        // await this.newAckBasedPromise<IAppendOperation | undefined>((resolve) => {
-        //     // Send the resolve function as the localOpMetadata. This will be provided back to us when the
-        //     // op is ack'd.
-        //     this.submitLocalMessage(message, resolve);
-        //     // If we fail due to runtime being disposed, it's better to return undefined then unhandled exception.
-        // });
-        // return a promise that resolves once we process the request and it is a valid op, otherwise the 
+        // return a promise that resolves once we process the request comming back from the server,
+        // if it is a valid op (e.g. no other op was processed since we send it) it will resolve
+        // otherwise the promise will be rejected
         return new Promise<void>((resolve, reject) => {
             this.activePush = { id: message.id, resolve, reject };
             this.submitLocalMessage(message);
         });
     }
-    append(value: T): Promise<void> {
+    append(values: T[]): Promise<void> {
         if (this.activePush !== undefined) {
             return Promise.reject(new Error("Already have a pending push"))
         }
         const op: IAppendOperation = {
             lastSeenSequenceNumber: this.lastSeenSequenceNumber,
             type: "append",
-            value,
+            values,
             id: uuid.v4()
         };
 

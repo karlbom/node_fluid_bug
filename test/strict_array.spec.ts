@@ -1,4 +1,5 @@
 import { SharedStrictArray } from "./../src/simple_dds/strict_arrray"
+import { SharedStrictArrayEventType } from "./../src/simple_dds/interfaces"
 import { expect } from "chai";
 import { LocalDeltaConnectionServer, ILocalDeltaConnectionServer } from "@fluidframework/server-local-server";
 import { IFluidCodeDetails } from "@fluidframework/core-interfaces";
@@ -83,7 +84,7 @@ describe("Strict Array", () => {
 
                 await opProcessingController.pauseProcessing();
 
-                let appendPromise = sharedArray1.append({ test: "sample" });
+                let appendPromise = sharedArray1.append([{ test: "sample" }]);
 
                 await opProcessingController.process(container1.deltaManager, container2.deltaManager);
 
@@ -98,18 +99,33 @@ describe("Strict Array", () => {
 
             });
 
+            it("Should emit event on successfully push", async () => {
+                await opProcessingController.pauseProcessing();
+                const appendPromise = sharedArray1.append([{ test: "sample" }]);
+
+                let eventEmitted = false;
+                sharedArray1.once(SharedStrictArrayEventType.Added, () => {
+                    eventEmitted = true;
+                })
+
+                await opProcessingController.process(container1.deltaManager, container2.deltaManager);
+                expect(eventEmitted).to.equal(true);
+
+                return appendPromise;
+            });
+
             it("Can push multiple ops", async () => {
 
                 await opProcessingController.pauseProcessing();
 
-                const promise_1 = sharedArray1.append({ test: "sample" });
+                const promise_1 = sharedArray1.append([{ test: "sample" }]);
 
                 await opProcessingController.process(container1.deltaManager, container2.deltaManager);
-                await promise_1;               
+                await promise_1;
 
-                const promise_2 = sharedArray1.append({ test: "sample2" });
+                const promise_2 = sharedArray1.append([{ test: "sample2" }]);
                 await opProcessingController.process(container1.deltaManager, container2.deltaManager);
-                await promise_2;    
+                await promise_2;
 
 
                 expect(sharedArray1.get().length).to.equal(2);
@@ -121,14 +137,14 @@ describe("Strict Array", () => {
                 expect(sharedArray2.get()[1]).to.deep.equal({ test: "sample2" });
 
 
-                const promise_3 = sharedArray2.append({ test: "sample3" });
+                const promise_3 = sharedArray2.append([{ test: "sample3" }]);
                 await opProcessingController.process(container1.deltaManager, container2.deltaManager);
-                await promise_3;    
+                await promise_3;
 
                 expect(sharedArray1.get().length).to.equal(3);
                 expect(sharedArray2.get().length).to.equal(3);
-                
-                expect(sharedArray1.get()[2]).to.deep.equal({ test: "sample3" });                
+
+                expect(sharedArray1.get()[2]).to.deep.equal({ test: "sample3" });
                 expect(sharedArray2.get()[2]).to.deep.equal({ test: "sample3" });
 
 
@@ -136,12 +152,12 @@ describe("Strict Array", () => {
             it("Cannot push new op when not at head", async () => {
                 await opProcessingController.pauseProcessing();
 
-                sharedArray1.append({ test: "sample" });
+                sharedArray1.append([{ test: "sample" }]);
 
                 await opProcessingController.process(container1.deltaManager);
 
 
-                let appendPromise2 = sharedArray2.append({ test: "conflict" });
+                let appendPromise2 = sharedArray2.append([{ test: "conflict" }]);
 
 
                 let finalPromise2 = appendPromise2.then(
@@ -158,8 +174,8 @@ describe("Strict Array", () => {
 
 
                 await finalPromise2;
-       
-                
+
+
             })
         });
     })

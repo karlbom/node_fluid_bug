@@ -2,9 +2,11 @@ import { ISharedObject, ISharedObjectEvents } from "@fluidframework/shared-objec
 import { Serializable } from "@fluidframework/datastore-definitions";
 
 
-
+export enum SharedStrictArrayEventType {
+    Added = "valuesAdded"
+}
 export interface ISharedStrictArrayEvents<T extends Serializable> extends ISharedObjectEvents {
-    (event: "valueAdded", listener: (value: T) => void) : any;
+    (event: SharedStrictArrayEventType.Added, listener: (value: T[]) => void): any;
 }
 
 
@@ -17,11 +19,11 @@ export interface ISharedStrictArray<T extends Serializable = any> extends IShare
     get(): T[];
 
     /**
-     * Appends a value to the array
-     * @param value value to append
+     * Appends a values to the array
+     * @param values value to append
      * @returns wether the value was successfully appended
      */
-    append(value: T) : Promise<void>;
+    append(values: T[]): Promise<void>;
 
 
 }
