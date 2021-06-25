@@ -21,6 +21,7 @@ async function launch() {
 
     await new Promise(r => setTimeout(r, 1000));
     console.log("second connected:", queue2.dds!.connected);
+    //both dds in the data object are connected on tinylicious, if we use the routerlicious backend the second dds is never connected
 }
 
 launch();
